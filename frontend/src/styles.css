@@ -1,0 +1,64 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1f2b; }
+
+.app-shell { display: flex; flex-direction: column; height: 100vh; }
+
+.app-header {
+  padding: 14px 20px;
+  background: #1e2761;
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.app-header h1 { margin: 0; font-size: 20px; }
+.app-header .subtitle { font-size: 13px; color: #cadcfc; }
+
+.error-banner {
+  background: #fdf3f3;
+  color: #b91c1c;
+  padding: 8px 20px;
+  font-size: 13px;
+}
+
+.app-body { flex: 1; display: flex; overflow: hidden; }
+.map-pane { flex: 1; }
+.sidebar-pane {
+  width: 340px;
+  border-left: 1px solid #e2e5ea;
+  overflow-y: auto;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.incident-list h2 { font-size: 15px; margin: 0 0 12px 0; }
+.incident-list ul { list-style: none; margin: 0; padding: 0; }
+.muted { color: #8a93a3; font-size: 13px; }
+
+.incident-card {
+  background: #fff;
+  border: 1px solid #e2e5ea;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.incident-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.status { font-size: 10.5px; padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+.status-pending { background: #fff8ec; color: #8a5a10; }
+.status-verified { background: #f0fbf3; color: #15803d; }
+
+.incident-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: #44506b;
+}
+.warning { color: #b91c1c; font-weight: 600; }

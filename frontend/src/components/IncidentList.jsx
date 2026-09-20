@@ -1,0 +1,28 @@
+import React from "react";
+
+export default function IncidentList({ incidents }) {
+  return (
+    <div className="incident-list">
+      <h2>Incidents ({incidents.length})</h2>
+      {incidents.length === 0 && <p className="muted">No incidents yet.</p>}
+      <ul>
+        {incidents.map((incident) => (
+          <li key={incident.id} className="incident-card">
+            <div className="incident-card-header">
+              <span className="disaster-type">{incident.disaster_type || "Unclassified"}</span>
+              <span className={`status status-${incident.status.includes("Verified") ? "verified" : "pending"}`}>
+                {incident.status}
+              </span>
+            </div>
+            <div className="incident-card-body">
+              <span>Confidence: {(incident.confidence * 100).toFixed(0)}%</span>
+              <span>Severity: {(incident.severity * 100).toFixed(0)}%</span>
+              <span>{incident.report_count} report(s)</span>
+              {incident.has_contradiction && <span className="warning">⚠ Conflicting</span>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
