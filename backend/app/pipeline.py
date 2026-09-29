@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from typing import List
 
 from geoalchemy2.shape import to_shape
+from app.utils import safe_to_shape
 from sqlalchemy.orm import Session
 
 from app.models import Report, Incident, VerificationStatus
@@ -34,7 +35,7 @@ from app.config import settings
 
 
 def _report_to_evidence_item(report: Report) -> EvidenceItem:
-    point = to_shape(report.location)
+    point = safe_to_shape(report.location)
     embedding = [float(x) for x in (report.embedding or "").split(",") if x] \
         if report.embedding else []
     return EvidenceItem(

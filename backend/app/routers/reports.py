@@ -5,12 +5,13 @@ from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, engine
 from app.models import Report, User
 from app.schemas import ReportCreate, ReportOut
-from app.auth import get_current_user
+from app.auth import get_current_user, get_optional_current_user
 from app.pipeline import process_new_report
 from app.ws.manager import manager
+from app.utils import safe_from_shape
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -24,9 +25,9 @@ async def create_report(
     payload: ReportCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    point = from_shape(Point(payload.longitude, payload.latitude), srid=4326)
+    point = safe_from_shape(payload.longitude, payload.latitude, engine)
 
     report = Report(
         reporter_id=current_user.id if current_user else None,

@@ -2,6 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from geoalchemy2.shape import to_shape
+from app.utils import safe_to_shape
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/incidents", tags=["incidents"])
 def _incident_to_out(incident: Incident, db: Session) -> IncidentOut:
     lat = lon = None
     if incident.centroid is not None:
-        point = to_shape(incident.centroid)
+        point = safe_to_shape(incident.centroid)
         lat, lon = point.y, point.x
 
     report_count = db.query(Report).filter(Report.incident_id == incident.id).count()
