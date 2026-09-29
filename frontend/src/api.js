@@ -6,6 +6,19 @@ export async function fetchIncidents() {
   return res.json();
 }
 
+export async function submitReport(reportData) {
+  const res = await fetch(`${API_BASE}/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reportData),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to submit report");
+  }
+  return res.json();
+}
+
 export function connectIncidentSocket(onMessage) {
   // In dev, Vite proxies /api to the backend but WebSockets need the
   // direct backend URL — adjust for production behind nginx (see
