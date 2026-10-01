@@ -313,4 +313,5 @@ npm run dev
 
 ## 📄 License
 
-MIT
+MI
+by mohit n anish
