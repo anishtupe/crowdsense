@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { submitReport } from "../api.js";
 
-export default function ReportForm({ onReportSubmitted, onViewDashboard }) {
+export default function ReportForm({ token, onReportSubmitted, onViewDashboard }) {
   const [text, setText] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaFile, setMediaFile] = useState(null);
@@ -76,7 +76,7 @@ export default function ReportForm({ onReportSubmitted, onViewDashboard }) {
         longitude: lonNum,
         source: "citizen",
       };
-      const result = await submitReport(payload);
+      const result = await submitReport(payload, token);
       setSubmittedReport(result);
       if (onReportSubmitted) {
         onReportSubmitted(result);

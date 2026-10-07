@@ -176,7 +176,7 @@ source .venv/bin/activate && pytest -q
 Expected output:
 ```
 ........................                        [100%]
-24 passed, 19 warnings in ~8s
+26 passed
 ```
 
 Tests cover:
@@ -193,8 +193,9 @@ Tests cover:
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `POST` | `/auth/register` | None | Register new user |
-| `POST` | `/auth/token` | None | Login, receive JWT |
-| `POST` | `/reports` | Optional | Submit citizen report |
+| `POST` | `/auth/login` | None | Login, receive JWT |
+| `GET` | `/auth/me` | Bearer token | Return the signed-in user and role |
+| `POST` | `/reports` | Signed in | Submit citizen report |
 | `GET` | `/reports` | None | List all reports |
 | `GET` | `/incidents` | None | List all fused incidents |
 | `POST` | `/incidents/{id}/verify` | Verifier+ | Approve/reject incident |
@@ -262,16 +263,22 @@ crowdsense/
 
 ### Step 1 — Start both servers (two terminals)
 
-**Terminal 1 — Backend:**
+**Terminal 1 — Backend** (activate the Python environment you installed dependencies into):
 ```powershell
 cd backend
 .venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 2 — Frontend:**
+If the environment is outside the project folder, run its Python executable directly instead:
+```powershell
+& "$env:LOCALAPPDATA\CrowdSense\venv312\Scripts\python.exe" -m uvicorn app.main:app --reload --port 8000
+```
+
+**Terminal 2 — Frontend** (from the project root):
 ```powershell
 cd frontend
+npm install
 npm run dev
 ```
 
@@ -284,19 +291,27 @@ npm run dev
 
 ### Step 3 — Demo flow (5 minutes)
 
-1. **Submit a report** — Click *"📢 Submit Citizen Report"*, enter a description (e.g. "Heavy flooding near Main Street"), click *"📍 Use My Location"* or type coordinates, click Submit. A confirmation card with the Report ID appears.
+1. **Register and sign in** — Click *Sign in* → *Create an account*, use an email/password, then submit the form. New accounts receive the citizen role. The dashboard is publicly viewable; report submission requires a signed-in account.
 
-2. **Live map update** — Switch to *"🗺️ Live Incidents Map"*. A colour-coded circle appears for the new incident (red = high severity, orange = medium, green = low). Hover to see the popup.
+2. **Submit a report** — Click *"📢 Submit Citizen Report"*, enter a description (e.g. "Heavy flooding near Main Street"), click *"📍 Use My Location"* or type coordinates, then submit. A confirmation card with the Report ID appears.
 
-3. **API Swagger tour** — Open http://localhost:8000/docs and walk through `POST /reports`, `GET /incidents`, `POST /incidents/{id}/verify`.
+3. **Live map update** — Switch to *"🗺️ Live Incidents Map"*. A colour-coded circle appears for the new incident (red = high severity, orange = medium, green = low). Click the circle to see its details.
 
-4. **Run tests live** — In the backend terminal:
+4. **Human verification (optional)** — To demonstrate verifier controls locally, first create an account in the app, then promote that account from the backend folder:
+   ```powershell
+   .\.venv\Scripts\python.exe -c "from app.database import SessionLocal; from app.models import User, Role; db=SessionLocal(); user=db.query(User).filter(User.email == 'your-email@example.com').one(); user.role=Role.verifier; db.commit(); db.close()"
+   ```
+   Replace the email with the account you registered. Sign out and back in; verifier accounts see Approve/Reject actions for incidents awaiting verification. If using a virtual environment outside the project, substitute its Python executable path.
+
+5. **API Swagger tour** — Open http://localhost:8000/docs and walk through `POST /auth/register`, `POST /auth/login`, `GET /incidents`, and `POST /incidents/{id}/verify`. Use the *Authorize* button to test protected routes.
+
+6. **Run tests live** — In the backend terminal:
    ```bash
    .venv\Scripts\python -m pytest -v
    ```
-   All 24 tests turn green in ~8 seconds.
+   The tests cover the API and evidence processing pipeline.
 
-5. **Explain the pipeline** — Submit two nearly-identical reports at the same coordinates; the fusion engine merges them into one incident with higher confidence. Submit conflicting reports (different disaster types); the `⚠ Conflicting` badge appears in the sidebar.
+7. **Explain the pipeline** — Submit two nearly-identical reports at the same coordinates; the fusion engine can merge them into one incident with higher confidence. Submit conflicting reports (different disaster types); the `⚠ Conflicting` badge appears in the sidebar.
 
 ---
 
