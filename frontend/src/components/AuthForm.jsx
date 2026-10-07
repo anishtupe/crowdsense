@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { fetchCurrentUser, loginUser, registerUser } from "../api.js";
 
-export default function AuthForm({ onAuthenticated, onViewDashboard }) {
+export default function AuthForm({ onAuthenticated }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +33,7 @@ export default function AuthForm({ onAuthenticated, onViewDashboard }) {
         <p className="auth-eyebrow">CrowdSense account</p>
         <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2>
         <p className="form-description">
-          Sign in to submit citizen reports. The live incident dashboard remains public.
+          Sign in to access the incident dashboard, submit reports, and review intelligence.
         </p>
 
         {error && <div className="alert alert-error" role="alert">{error}</div>}
@@ -83,9 +83,6 @@ export default function AuthForm({ onAuthenticated, onViewDashboard }) {
             {mode === "login" ? "Create an account" : "Sign in"}
           </button>
         </p>
-        <button className="btn btn-secondary auth-back" onClick={onViewDashboard}>
-          Back to live dashboard
-        </button>
       </section>
     </div>
   );
