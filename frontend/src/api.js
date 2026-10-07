@@ -1,21 +1,73 @@
 const API_BASE = "/api";
 
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function responseError(res, fallback) {
+  const body = await res.json().catch(() => ({}));
+  return new Error(body.detail || fallback);
+}
+
 export async function fetchIncidents() {
   const res = await fetch(`${API_BASE}/incidents`);
-  if (!res.ok) throw new Error("Failed to fetch incidents");
+  if (!res.ok) throw await responseError(res, "Failed to fetch incidents");
   return res.json();
 }
 
-export async function submitReport(reportData) {
-  const res = await fetch(`${API_BASE}/reports`, {
+export async function registerUser(email, password) {
+  const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw await responseError(res, "Failed to create account");
+  return res.json();
+}
+
+export async function loginUser(email, password) {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ username: email, password }),
+  });
+  if (!res.ok) throw await responseError(res, "Failed to sign in");
+  return res.json();
+}
+
+export async function fetchCurrentUser(token) {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw await responseError(res, "Your session has expired");
+  return res.json();
+}
+
+export async function submitReport(reportData, token) {
+  const res = await fetch(`${API_BASE}/reports`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
     body: JSON.stringify(reportData),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to submit report");
+    throw await responseError(res, "Failed to submit report");
   }
+  return res.json();
+}
+
+export async function verifyIncident(incidentId, approve, token) {
+  const res = await fetch(`${API_BASE}/incidents/${incidentId}/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify({ approve }),
+  });
+  if (!res.ok) throw await responseError(res, "Failed to update incident");
   return res.json();
 }
 

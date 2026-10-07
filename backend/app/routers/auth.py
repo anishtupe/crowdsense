@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserOut, Token
-from app.auth import hash_password, verify_password, create_access_token
+from app.auth import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,3 +37,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         )
     token = create_access_token(subject=user.id)
     return Token(access_token=token)
+
+
+@router.get("/me", response_model=UserOut)
+def current_user(user: User = Depends(get_current_user)):
+    return user

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from geoalchemy2.shape import from_shape, to_shape
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, engine
 from app.models import Report, User
 from app.schemas import ReportCreate, ReportOut
-from app.auth import get_current_user, get_optional_current_user
+from app.auth import get_current_user
 from app.pipeline import process_new_report
 from app.ws.manager import manager
 from app.utils import safe_from_shape
@@ -25,7 +25,7 @@ async def create_report(
     payload: ReportCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     point = safe_from_shape(payload.longitude, payload.latitude, engine)
 
