@@ -30,7 +30,7 @@ CrowdSense is a final-year Computer Science project that aggregates crowd-source
 | 4 | **Geospatial Clustering** — DBSCAN-based incident grouping | ✅ Ready |
 | 5 | **Evidence Fusion Engine** — confidence, severity & disaster-type voting | ✅ Ready |
 | 6 | **Live Map Dashboard** — Leaflet map with colour-coded severity markers | ✅ Ready |
-| 7 | **Real-Time WebSocket Updates** — dashboard refreshes automatically | ✅ Ready |
+| 7 | **Live Incident Dashboard** — map and reports refresh automatically | ✅ Ready |
 | 8 | **JWT Authentication** — citizen / verifier / analyst / admin roles | ✅ Ready |
 | 9 | **Human Verification Gate** — verifier role can approve/reject incidents | ✅ Ready |
 | 10 | **SQLite Fallback** — works without PostgreSQL for demo/dev | ✅ Ready |
@@ -198,9 +198,12 @@ Tests cover:
 | `POST` | `/reports` | Signed in | Submit citizen report |
 | `GET` | `/reports` | None | List all reports |
 | `GET` | `/incidents` | None | List all fused incidents |
+| `GET` | `/incidents/{id}` | None | Fetch one incident |
 | `POST` | `/incidents/{id}/verify` | Verifier+ | Approve/reject incident |
 | `GET` | `/health` | None | Health check |
-| `WS` | `/ws/incidents` | None | Real-time incident stream |
+| `WS` | `/ws/incidents` | None | WebSocket connection endpoint |
+
+The frontend polls the incident and report endpoints every 10 seconds. Although a WebSocket endpoint exists, the current report-processing path does not broadcast events to it.
 
 Full interactive docs: **http://localhost:8000/docs**
 
@@ -286,24 +289,24 @@ npm run dev
 
 | URL | What it shows |
 |-----|---------------|
-| http://localhost:5173 | Live React dashboard |
+| http://localhost:5173 | Sign in to the role-aware CrowdSense workspace |
 | http://localhost:8000/docs | Full Swagger API explorer |
 
 ### Step 3 — Demo flow (5 minutes)
 
-1. **Register and sign in** — Click *Sign in* → *Create an account*, use an email/password, then submit the form. New accounts receive the citizen role. The dashboard is publicly viewable; report submission requires a signed-in account.
+1. **Register and sign in** — The app opens at the sign-in screen. Choose *Create an account* and register with an email/password. New accounts receive the citizen role, then the app signs in and opens the dashboard. All frontend workspaces require authentication.
 
-2. **Submit a report** — Click *"📢 Submit Citizen Report"*, enter a description (e.g. "Heavy flooding near Main Street"), click *"📍 Use My Location"* or type coordinates, then submit. A confirmation card with the Report ID appears.
+2. **Submit a report** — Click *Submit report*, enter a description (e.g. "Heavy flooding near Main Street"), use GPS or type coordinates, then submit. A confirmation card with the Report ID appears.
 
-3. **Live map update** — Switch to *"🗺️ Live Incidents Map"*. A colour-coded circle appears for the new incident (red = high severity, orange = medium, green = low). Click the circle to see its details.
+3. **Review AI output** — Open *AI insights* to see report type/sentiment labels and linked incidents. NLP and contradiction checks are heuristics, while image classification is a stub. Background processing can take a moment; the frontend refreshes periodically.
 
-4. **Human verification (optional)** — To demonstrate verifier controls locally, first create an account in the app, then promote that account from the backend folder:
+4. **Admin and human verification (optional)** — To demonstrate the admin dashboard locally, create an account in the app, then promote it from the backend folder:
    ```powershell
-   .\.venv\Scripts\python.exe -c "from app.database import SessionLocal; from app.models import User, Role; db=SessionLocal(); user=db.query(User).filter(User.email == 'your-email@example.com').one(); user.role=Role.verifier; db.commit(); db.close()"
+   .\.venv\Scripts\python.exe -c "from app.database import SessionLocal; from app.models import User, Role; db=SessionLocal(); user=db.query(User).filter(User.email == 'your-email@example.com').one(); user.role=Role.admin; db.commit(); db.close()"
    ```
-   Replace the email with the account you registered. Sign out and back in; verifier accounts see Approve/Reject actions for incidents awaiting verification. If using a virtual environment outside the project, substitute its Python executable path.
+   Replace the email with the account you registered. Sign out and back in. Admins see the operations dashboard and verification queue; verifier and analyst roles can approve/reject from the incident list. Role management is not exposed by the current backend API. If using a virtual environment outside the project, substitute its Python executable path.
 
-5. **API Swagger tour** — Open http://localhost:8000/docs and walk through `POST /auth/register`, `POST /auth/login`, `GET /incidents`, and `POST /incidents/{id}/verify`. Use the *Authorize* button to test protected routes.
+5. **API Swagger tour** — Open http://localhost:8000/docs and walk through `POST /auth/register`, `POST /auth/login`, `GET /reports`, `GET /incidents`, and `POST /incidents/{id}/verify`. Use the *Authorize* button to test protected routes.
 
 6. **Run tests live** — In the backend terminal:
    ```bash
@@ -311,7 +314,7 @@ npm run dev
    ```
    The tests cover the API and evidence processing pipeline.
 
-7. **Explain the pipeline** — Submit two nearly-identical reports at the same coordinates; the fusion engine can merge them into one incident with higher confidence. Submit conflicting reports (different disaster types); the `⚠ Conflicting` badge appears in the sidebar.
+7. **Explain the pipeline** — Submit two nearly-identical reports at the same coordinates; duplicate detection and clustering may associate them with one incident. Contradiction flags and confidence/severity scores are heuristic outputs, not trained predictive-model results.
 
 ---
 

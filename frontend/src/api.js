@@ -15,6 +15,18 @@ export async function fetchIncidents() {
   return res.json();
 }
 
+export async function fetchReports(limit = 100) {
+  const res = await fetch(`${API_BASE}/reports?limit=${limit}`);
+  if (!res.ok) throw await responseError(res, "Failed to fetch reports");
+  return res.json();
+}
+
+export async function fetchHealth() {
+  const res = await fetch(`${API_BASE}/health`);
+  if (!res.ok) throw await responseError(res, "Backend health check failed");
+  return res.json();
+}
+
 export async function registerUser(email, password) {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
@@ -68,6 +80,12 @@ export async function verifyIncident(incidentId, approve, token) {
     body: JSON.stringify({ approve }),
   });
   if (!res.ok) throw await responseError(res, "Failed to update incident");
+  return res.json();
+}
+
+export async function fetchIncident(incidentId) {
+  const res = await fetch(`${API_BASE}/incidents/${encodeURIComponent(incidentId)}`);
+  if (!res.ok) throw await responseError(res, "Failed to fetch incident details");
   return res.json();
 }
 
