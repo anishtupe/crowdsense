@@ -2,7 +2,7 @@
 
 > **Contradiction-Aware Multimodal Evidence Fusion Platform for Real-Time Geospatial Incident Intelligence**
 
-CrowdSense is a final-year Computer Science project that aggregates crowd-sourced incident reports, fuses multimodal evidence (text + image), detects duplicate/contradictory signals, clusters geospatial events, and presents a live map dashboard — all powered by a FastAPI backend with a React/Leaflet frontend.
+CrowdSense is a final-year Computer Science project that aggregates crowd-sourced incident reports, fuses multimodal evidence (text + image), detects duplicate/contradictory signals, clusters geospatial events, and presents a live map dashboard — all powered by a FastAPI backend with a React/MapLibre frontend.
 
 ---
 
@@ -29,7 +29,7 @@ CrowdSense is a final-year Computer Science project that aggregates crowd-source
 | 3 | **Contradiction Detection** — flags conflicting location/type claims | ✅ Ready |
 | 4 | **Geospatial Clustering** — DBSCAN-based incident grouping | ✅ Ready |
 | 5 | **Evidence Fusion Engine** — confidence, severity & disaster-type voting | ✅ Ready |
-| 6 | **Live Map Dashboard** — Leaflet map with colour-coded severity markers | ✅ Ready |
+| 6 | **Live Map Dashboard** — MapLibre map with colour-coded severity markers | ✅ Ready |
 | 7 | **Live Incident Dashboard** — map and reports refresh automatically | ✅ Ready |
 | 8 | **JWT Authentication** — citizen / verifier / analyst / admin roles | ✅ Ready |
 | 9 | **Human Verification Gate** — verifier role can approve/reject incidents | ✅ Ready |
@@ -43,7 +43,7 @@ CrowdSense is a final-year Computer Science project that aggregates crowd-source
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                  React Frontend (Vite)                    │
-│  • Live Incident Map (Leaflet)                            │
+│  • Live Incident Map (MapLibre)                            │
 │  • Citizen Report Form (text + GPS + media upload)        │
 │  • Real-Time WebSocket listener                           │
 └────────────────────────┬─────────────────────────────────┘
@@ -79,7 +79,7 @@ CrowdSense is a final-year Computer Science project that aggregates crowd-source
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 18, Vite 5, Leaflet / react-leaflet |
+| Frontend | React 18, Vite 5, MapLibre GL JS |
 | Backend | FastAPI 0.115, Uvicorn |
 | ORM | SQLAlchemy 2, GeoAlchemy2 |
 | Database | SQLite (dev) / PostgreSQL 15 + PostGIS (prod) |
@@ -248,7 +248,7 @@ crowdsense/
 │   │   ├── api.js               # Fetch + WebSocket helpers
 │   │   ├── styles.css           # Design system
 │   │   └── components/
-│   │       ├── MapView.jsx      # Leaflet map, severity markers
+│   │       ├── MapView.jsx      # MapLibre map, severity markers
 │   │       ├── IncidentList.jsx # Sidebar incident cards
 │   │       └── ReportForm.jsx   # Citizen report submission form
 │   ├── index.html
@@ -331,5 +331,5 @@ npm run dev
 
 ## 📄 License
 
-MI
+MIT
 by mohit n anish
