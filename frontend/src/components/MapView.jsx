@@ -11,13 +11,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 const INCIDENT_SOURCE = "incidents";
 const INCIDENT_LAYER = "incident-markers";
+const CLUSTER_LAYER = "incident-clusters";
+const CLUSTER_COUNT_LAYER = "incident-cluster-count";
 const INCIDENT_RING_LAYER = "incident-conflicts";
 const CONFLICT_IMAGE = "crowdsense-conflict-ring";
 const MAP_STYLES = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   light: "https://tiles.openfreemap.org/styles/liberty",
 };
-const HIGH_DENSITY_THRESHOLD = 200;
 
 function finiteNumber(value) {
   if (value == null || (typeof value === "string" && value.trim() === "")) return null;
@@ -41,12 +42,6 @@ function locatedIncidents(incidents) {
   });
 }
 
-function severityColor(severity) {
-  if (severity > 0.7) return "#f56b6b";
-  if (severity >= 0.4) return "#f5b84b";
-  return "#44d18a";
-}
-
 function incidentsToGeoJSON(incidents) {
   return {
     type: "FeatureCollection",
@@ -59,6 +54,8 @@ function incidentsToGeoJSON(incidents) {
       },
       properties: {
         id: String(incident.id),
+        latitude: incident.latitude,
+        longitude: incident.longitude,
         disaster_type: incident.disaster_type || "Unclassified",
         confidence: finiteNumber(incident.confidence) ?? 0,
         severity: finiteNumber(incident.severity) ?? 0,
@@ -68,6 +65,24 @@ function incidentsToGeoJSON(incidents) {
       },
     })),
   };
+}
+
+function incidentDataSignature(incidents) {
+  return JSON.stringify(
+    locatedIncidents(incidents)
+      .map((incident) => [
+        incident.id,
+        incident.latitude,
+        incident.longitude,
+        incident.disaster_type,
+        incident.confidence,
+        incident.severity,
+        incident.status,
+        incident.report_count,
+        incident.has_contradiction,
+      ])
+      .sort((first, second) => String(first[0]).localeCompare(String(second[0])))
+  );
 }
 
 function fitIncidents(map, incidents) {
@@ -131,51 +146,12 @@ function createPopupContent(properties) {
   return content;
 }
 
-function incidentMarker(incident, onClick, onHighlight) {
-  const severity = finiteNumber(incident.severity) ?? 0;
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = `incident-marker${incident.has_contradiction ? " has-conflict" : ""}`;
-  element.style.setProperty("--incident-color", severityColor(severity));
-  element.style.setProperty("--pulse-duration", `${Math.max(0.85, 2.25 - severity * 1.15)}s`);
-  element.setAttribute("aria-label", `${incident.disaster_type || "Incident"}, severity ${Math.round(severity * 100)} percent${incident.has_contradiction ? ", conflicting reports" : ""}`);
-  const ring = document.createElement("span");
-  ring.className = "incident-marker-ring";
-  const core = document.createElement("span");
-  core.className = "incident-marker-core";
-  element.append(ring, core);
-  if (incident.has_contradiction) {
-    const badge = document.createElement("span");
-    badge.className = "incident-marker-warning";
-    badge.textContent = "!";
-    element.append(badge);
-  }
-  element.addEventListener("click", (event) => {
-    event.stopPropagation();
-    onClick(incident);
-  });
-  element.addEventListener("mouseenter", () => onHighlight(incident.id));
-  element.addEventListener("mouseleave", () => onHighlight(null));
-  return element;
-}
-
-function clusterMarker(incidents, onClick) {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = "incident-cluster-marker";
-  element.textContent = String(incidents.length);
-  element.setAttribute("aria-label", `${incidents.length} nearby incidents`);
-  element.addEventListener("click", (event) => {
-    event.stopPropagation();
-    onClick(incidents);
-  });
-  return element;
-}
-
 function addIncidentLayers(map, incidents) {
   if (map.getSource(INCIDENT_SOURCE)) {
     if (map.getLayer(INCIDENT_RING_LAYER)) map.removeLayer(INCIDENT_RING_LAYER);
     if (map.getLayer(INCIDENT_LAYER)) map.removeLayer(INCIDENT_LAYER);
+    if (map.getLayer(CLUSTER_COUNT_LAYER)) map.removeLayer(CLUSTER_COUNT_LAYER);
+    if (map.getLayer(CLUSTER_LAYER)) map.removeLayer(CLUSTER_LAYER);
     map.removeSource(INCIDENT_SOURCE);
   }
   if (!map.hasImage(CONFLICT_IMAGE)) {
@@ -196,13 +172,43 @@ function addIncidentLayers(map, incidents) {
   map.addSource(INCIDENT_SOURCE, {
     type: "geojson",
     data: incidentsToGeoJSON(incidents),
+    cluster: true,
+    clusterRadius: 48,
+    clusterMaxZoom: 14,
+  });
+  map.addLayer({
+    id: CLUSTER_LAYER,
+    type: "circle",
+    source: INCIDENT_SOURCE,
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-radius": ["step", ["get", "point_count"], 18, 10, 21, 50, 25, 100, 29],
+      "circle-color": "#587ee8",
+      "circle-opacity": 0.95,
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+    },
+  });
+  map.addLayer({
+    id: CLUSTER_COUNT_LAYER,
+    type: "symbol",
+    source: INCIDENT_SOURCE,
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-font": ["Open Sans Bold"],
+      "text-size": 12,
+      "text-allow-overlap": true,
+    },
+    paint: { "text-color": "#ffffff" },
   });
   map.addLayer({
     id: INCIDENT_LAYER,
     type: "circle",
     source: INCIDENT_SOURCE,
+    filter: ["!", ["has", "point_count"]],
     paint: {
-      "circle-radius": ["case", ["boolean", ["feature-state", "hover"], false], 11, 7],
+      "circle-radius": ["case", ["boolean", ["feature-state", "hover"], false], 10, 7],
       "circle-color": [
         "case",
         [">", ["get", "severity"], 0.7],
@@ -211,7 +217,7 @@ function addIncidentLayers(map, incidents) {
         "#f5b84b",
         "#44d18a",
       ],
-      "circle-opacity": 0.92,
+      "circle-opacity": 0.94,
       "circle-stroke-color": "#ffffff",
       "circle-stroke-width": ["case", ["boolean", ["feature-state", "hover"], false], 3, 1.5],
     },
@@ -220,7 +226,7 @@ function addIncidentLayers(map, incidents) {
     id: INCIDENT_RING_LAYER,
     type: "symbol",
     source: INCIDENT_SOURCE,
-    filter: ["==", ["get", "has_contradiction"], true],
+    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "has_contradiction"], true]],
     layout: {
       "icon-image": CONFLICT_IMAGE,
       "icon-size": 1,
@@ -245,9 +251,7 @@ export default function MapView({
   const appliedThemeRef = useRef(theme);
   const activePopupRef = useRef(null);
   const toastTimerRef = useRef(null);
-  const markerRecordsRef = useRef(new Map());
-  const syncMarkersRef = useRef(null);
-  const largeSourceSignatureRef = useRef("");
+  const sourceSignatureRef = useRef("");
   const lastFittedSignature = useRef("");
   const [toast, setToast] = useState("");
   const [locating, setLocating] = useState(false);
@@ -330,143 +334,6 @@ export default function MapView({
       .addTo(map);
   };
 
-  const showIncidentCluster = (cluster, position) => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.flyTo({
-      center: position,
-      zoom: Math.min(17, Math.max(map.getZoom() + 2, 12)),
-      pitch: 45,
-      duration: 700,
-    });
-    const content = document.createElement("div");
-    content.className = "incident-popup";
-    const title = document.createElement("strong");
-    title.className = "incident-popup-title";
-    title.textContent = `${cluster.length} nearby incidents`;
-    content.append(title);
-    cluster.forEach((incident) => {
-      const item = document.createElement("div");
-      item.className = "incident-cluster-item";
-      const name = document.createElement("strong");
-      name.textContent = incident.disaster_type || "Unclassified";
-      const detail = document.createElement("span");
-      detail.textContent = `Severity ${Math.round((finiteNumber(incident.severity) ?? 0) * 100)}% · ${incident.report_count ?? 0} reports`;
-      item.append(name, detail);
-      content.append(item);
-    });
-    activePopupRef.current?.remove();
-    activePopupRef.current = new Popup({ closeButton: true, closeOnClick: true, offset: 18 })
-      .setLngLat(position)
-      .setDOMContent(content)
-      .addTo(map);
-  };
-
-  syncMarkersRef.current = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    const located = locatedIncidents(incidentsRef.current);
-    if (located.length > HIGH_DENSITY_THRESHOLD) {
-      markerRecordsRef.current.forEach(({ marker }) => marker.remove());
-      markerRecordsRef.current.clear();
-      if (map.isStyleLoaded()) {
-        const dataSignature = located.map((incident) => [
-          incident.id,
-          incident.latitude,
-          incident.longitude,
-          incident.disaster_type,
-          incident.confidence,
-          incident.severity,
-          incident.status,
-          incident.report_count,
-          incident.has_contradiction,
-        ].join(":")).sort().join("|");
-        if (map.getSource(INCIDENT_SOURCE)) {
-          if (largeSourceSignatureRef.current !== dataSignature) {
-            map.getSource(INCIDENT_SOURCE).setData(incidentsToGeoJSON(located));
-            largeSourceSignatureRef.current = dataSignature;
-          }
-        } else {
-          addIncidentLayers(map, located);
-          largeSourceSignatureRef.current = dataSignature;
-        }
-      }
-      return;
-    }
-
-    const pixelGroups = [];
-    located.forEach((incident) => {
-      const point = map.project([incident.longitude, incident.latitude]);
-      const nearbyGroup = pixelGroups.find((group) =>
-        Math.hypot(point.x - group.centerX, point.y - group.centerY) <= 34
-      );
-      if (nearbyGroup) {
-        nearbyGroup.incidents.push(incident);
-        const count = nearbyGroup.incidents.length;
-        nearbyGroup.centerX += (point.x - nearbyGroup.centerX) / count;
-        nearbyGroup.centerY += (point.y - nearbyGroup.centerY) / count;
-      } else {
-        pixelGroups.push({
-          incidents: [incident],
-          centerX: point.x,
-          centerY: point.y,
-        });
-      }
-    });
-
-    const nextRecords = new Map();
-    pixelGroups.forEach((group) => {
-      const members = group.incidents;
-      const key = members.length === 1
-        ? `incident:${members[0].id}`
-        : `cluster:${members.map((incident) => incident.id).sort().join("|")}`;
-      const position = members.length === 1
-        ? [members[0].longitude, members[0].latitude]
-        : map.unproject([group.centerX, group.centerY]).toArray();
-      const signature = members.length === 1
-        ? [
-          members[0].latitude,
-          members[0].longitude,
-          members[0].severity,
-          members[0].has_contradiction,
-          members[0].disaster_type,
-          members[0].status,
-          members[0].report_count,
-        ].join(":")
-        : `${position.map((coordinate) => coordinate.toFixed(6)).join(":")}:${members.length}`;
-      const existing = markerRecordsRef.current.get(key);
-      if (existing?.signature === signature) {
-        nextRecords.set(key, existing);
-        return;
-      }
-
-      existing?.marker.remove();
-      const element = members.length === 1
-        ? incidentMarker(
-          members[0],
-          (incident) => showIncident(incident),
-          onHighlightIncident || (() => {})
-        )
-        : clusterMarker(members, (cluster) => showIncidentCluster(cluster, position));
-      const marker = new Marker({ element, anchor: "center" })
-        .setLngLat(position)
-        .addTo(map);
-      marker.__incidentId = members.length === 1 ? String(members[0].id) : null;
-      nextRecords.set(key, { marker, signature });
-    });
-
-    markerRecordsRef.current.forEach(({ marker }, key) => {
-      if (!nextRecords.has(key)) marker.remove();
-    });
-    markerRecordsRef.current = nextRecords;
-    if (map.getSource(INCIDENT_SOURCE)) {
-      if (map.getLayer(INCIDENT_RING_LAYER)) map.removeLayer(INCIDENT_RING_LAYER);
-      if (map.getLayer(INCIDENT_LAYER)) map.removeLayer(INCIDENT_LAYER);
-      map.removeSource(INCIDENT_SOURCE);
-      largeSourceSignatureRef.current = "";
-    }
-  };
-
   useEffect(() => {
     const map = new MapLibreMap({
       container: mapContainer.current,
@@ -488,22 +355,36 @@ export default function MapView({
     });
     map.addControl(geolocate, "top-right");
     map.on("click", (event) => {
-      if (!map.getLayer(INCIDENT_LAYER)) return;
-      const feature = map.queryRenderedFeatures(event.point, { layers: [INCIDENT_LAYER] })[0];
+      const activeLayers = [CLUSTER_LAYER, INCIDENT_LAYER].filter((layer) => map.getLayer(layer));
+      if (!activeLayers.length) return;
+      const feature = map.queryRenderedFeatures(event.point, { layers: activeLayers })[0];
       if (!feature) return;
-      const incident = locatedIncidents(incidentsRef.current).find(
-        (item) => String(item.id) === String(feature.properties?.id)
-      );
-      if (incident) showIncident(incident);
+      if (feature.layer.id === CLUSTER_LAYER) {
+        const source = map.getSource(INCIDENT_SOURCE);
+        source?.getClusterExpansionZoom(feature.properties.cluster_id, (error, zoom) => {
+          if (error) {
+            showToast("Could not expand this incident cluster. Try zooming in.");
+            return;
+          }
+          map.easeTo({ center: feature.geometry.coordinates, zoom, duration: 650 });
+        });
+        return;
+      }
+      const [longitude, latitude] = feature.geometry.coordinates;
+      showIncident({
+        ...feature.properties,
+        latitude,
+        longitude,
+        has_contradiction: feature.properties.has_contradiction === true ||
+          feature.properties.has_contradiction === "true",
+      });
     });
     map.on("mousemove", (event) => {
-      if (!map.getLayer(INCIDENT_LAYER)) return;
-      const feature = map.queryRenderedFeatures(event.point, { layers: [INCIDENT_LAYER] })[0];
+      const activeLayers = [CLUSTER_LAYER, INCIDENT_LAYER].filter((layer) => map.getLayer(layer));
+      if (!activeLayers.length) return;
+      const feature = map.queryRenderedFeatures(event.point, { layers: activeLayers })[0];
       map.getCanvas().style.cursor = feature ? "pointer" : "";
     });
-    const syncMarkers = () => syncMarkersRef.current?.();
-    map.on("zoomend", syncMarkers);
-    map.on("moveend", syncMarkers);
 
     geolocate.on("geolocate", (event) => {
       const { longitude, latitude } = event.coords;
@@ -534,10 +415,8 @@ export default function MapView({
           },
         });
       }
-      const located = locatedIncidents(incidentsRef.current);
-      if (located.length > HIGH_DENSITY_THRESHOLD && !map.getSource(INCIDENT_SOURCE)) {
-        addIncidentLayers(map, incidentsRef.current);
-      }
+      addIncidentLayers(map, incidentsRef.current);
+      sourceSignatureRef.current = incidentDataSignature(incidentsRef.current);
       const signature = incidentsRef.current.map((item) => item.id).sort().join("|");
       if (signature && signature !== lastFittedSignature.current) {
         fitIncidents(map, incidentsRef.current);
@@ -549,10 +428,6 @@ export default function MapView({
     map.on("load", initializeStyle);
 
     return () => {
-      map.off("zoomend", syncMarkers);
-      map.off("moveend", syncMarkers);
-      markerRecordsRef.current.forEach(({ marker }) => marker.remove());
-      markerRecordsRef.current.clear();
       userMarkerRef.current?.remove();
       activePopupRef.current?.remove();
       map.remove();
@@ -587,10 +462,8 @@ export default function MapView({
           },
         });
       }
-      const located = locatedIncidents(incidentsRef.current);
-      if (located.length > HIGH_DENSITY_THRESHOLD && !map.getSource(INCIDENT_SOURCE)) {
-        addIncidentLayers(map, incidentsRef.current);
-      }
+      addIncidentLayers(map, incidentsRef.current);
+      sourceSignatureRef.current = incidentDataSignature(incidentsRef.current);
       const signature = incidentsRef.current.map((item) => item.id).sort().join("|");
       if (signature && signature !== lastFittedSignature.current) {
         fitIncidents(map, incidentsRef.current);
@@ -608,7 +481,18 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
     incidentsRef.current = incidents;
-    syncMarkersRef.current?.();
+    if (map.isStyleLoaded()) {
+      const dataSignature = incidentDataSignature(incidents);
+      if (map.getSource(INCIDENT_SOURCE)) {
+        if (sourceSignatureRef.current !== dataSignature) {
+          map.getSource(INCIDENT_SOURCE).setData(incidentsToGeoJSON(incidents));
+          sourceSignatureRef.current = dataSignature;
+        }
+      } else {
+        addIncidentLayers(map, incidents);
+        sourceSignatureRef.current = dataSignature;
+      }
+    }
 
     const signature = incidents.map((item) => `${item.id}:${item.longitude}:${item.latitude}`).sort().join("|");
     if (map.loaded() && signature && signature !== lastFittedSignature.current) {
@@ -619,14 +503,7 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    markerRecordsRef.current.forEach(({ marker }) => {
-      marker.getElement().classList.toggle(
-        "is-highlighted",
-        highlightedIncidentId != null && marker.__incidentId === String(highlightedIncidentId)
-      );
-    });
-    const source = map?.getSource(INCIDENT_SOURCE);
-    if (!source || !map.getLayer(INCIDENT_LAYER)) return;
+    if (!map?.getSource(INCIDENT_SOURCE) || !map.getLayer(INCIDENT_LAYER)) return;
     const previousId = map.__crowdsenseHighlightedId;
     if (previousId != null) {
       map.setFeatureState({ source: INCIDENT_SOURCE, id: String(previousId) }, { hover: false });
@@ -636,43 +513,6 @@ export default function MapView({
     }
     map.__crowdsenseHighlightedId = highlightedIncidentId;
   }, [highlightedIncidentId, incidents]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || incidents.length <= HIGH_DENSITY_THRESHOLD) return undefined;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reducedMotion) return undefined;
-    let frame;
-    const start = performance.now();
-    const animate = (time) => {
-      if (map.getLayer(INCIDENT_LAYER)) {
-        const elapsed = time - start;
-        const radius = (period) => 7 + (((elapsed % period) / period) * 6);
-        const opacity = (period) => 0.92 - (((elapsed % period) / period) * 0.34);
-        map.setPaintProperty(INCIDENT_LAYER, "circle-radius", [
-          "case",
-          ["boolean", ["feature-state", "hover"], false],
-          11,
-          [">", ["get", "severity"], 0.7],
-          radius(950),
-          [">=", ["get", "severity"], 0.4],
-          radius(1500),
-          radius(2200),
-        ]);
-        map.setPaintProperty(INCIDENT_LAYER, "circle-opacity", [
-          "case",
-          [">", ["get", "severity"], 0.7],
-          opacity(950),
-          [">=", ["get", "severity"], 0.4],
-          opacity(1500),
-          opacity(2200),
-        ]);
-      }
-      frame = window.requestAnimationFrame(animate);
-    };
-    frame = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frame);
-  }, [incidents.length]);
 
   const hasLocatedIncidents = locatedIncidents(incidents).length > 0;
 
