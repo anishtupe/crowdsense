@@ -23,6 +23,10 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
+_NLI_MODEL = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+_nli_pipeline = None
+_nli_unavailable = False
+
 _SEVERITY_WORDS_HIGH = ["fatal", "died", "dead", "collapsed", "trapped", "severe"]
 _SEVERITY_WORDS_LOW = ["minor", "contained", "under control", "safe", "resolved"]
 
@@ -50,18 +54,63 @@ def _severity_signal(text: Optional[str]) -> int:
     return 0
 
 
+def _get_nli_pipeline():
+    """Load the multilingual NLI pipeline on first use; None if unavailable."""
+    global _nli_pipeline, _nli_unavailable
+    if _nli_unavailable:
+        return None
+    if _nli_pipeline is None:
+        try:
+            from transformers import pipeline
+
+            _nli_pipeline = pipeline(
+                "text-classification",
+                model=_NLI_MODEL,
+            )
+        except Exception:
+            _nli_unavailable = True
+            return None
+    return _nli_pipeline
+
+
+def _label_is_contradiction(output) -> bool:
+    if isinstance(output, list):
+        output = output[0]
+    label = str(output.get("label", "")).lower()
+    return "contradiction" in label
+
+
+def _nli_contradicts(nli, text_a: str, text_b: str) -> bool:
+    ab = nli({"text": text_a, "text_pair": text_b}, truncation=True)
+    ba = nli({"text": text_b, "text_pair": text_a}, truncation=True)
+    return _label_is_contradiction(ab) or _label_is_contradiction(ba)
+
+
+def _heuristic_contradiction(text_a: Optional[str], text_b: Optional[str]) -> bool:
+    sig_a = _severity_signal(text_a)
+    sig_b = _severity_signal(text_b)
+    return sig_a != 0 and sig_b != 0 and sig_a != sig_b
+
+
 def detect_contradiction(
     report_a_id: str, text_a: Optional[str],
     report_b_id: str, text_b: Optional[str],
 ) -> ContradictionResult:
-    """Heuristic placeholder: flags a contradiction when one report reads
-    as clearly high-severity and the other as clearly low-severity for
-    what's presumed to be the same event."""
-    sig_a = _severity_signal(text_a)
-    sig_b = _severity_signal(text_b)
+    """NLI contradiction check with keyword/severity heuristic fallback."""
+    nli = _get_nli_pipeline()
+    contradicts = False
+    reason = None
 
-    contradicts = sig_a != 0 and sig_b != 0 and sig_a != sig_b
-    reason = "conflicting severity language" if contradicts else None
+    if nli is not None and text_a and text_b:
+        try:
+            contradicts = _nli_contradicts(nli, text_a, text_b)
+            reason = "nli contradiction" if contradicts else None
+        except Exception:
+            nli = None
+
+    if nli is None:
+        contradicts = _heuristic_contradiction(text_a, text_b)
+        reason = "conflicting severity language" if contradicts else None
 
     return ContradictionResult(
         report_a_id=report_a_id,
