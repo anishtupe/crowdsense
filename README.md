@@ -2,7 +2,7 @@
 
 > **Contradiction-Aware Multimodal Evidence Fusion Platform for Real-Time Geospatial Incident Intelligence**
 
-CrowdSense is a final-year Computer Science project that aggregates crowd-sourced incident reports, fuses multimodal evidence (text + image), detects duplicate/contradictory signals, clusters geospatial events, and presents a live map dashboard — all powered by a FastAPI backend with a React/MapLibre frontend.
+CrowdSense is a  project that aggregates crowd-sourced incident reports, fuses multimodal evidence (text + image), detects duplicate/contradictory signals, clusters geospatial events, and presents a live map dashboard — all powered by a FastAPI backend with a React/MapLibre frontend.
 
 ---
 
