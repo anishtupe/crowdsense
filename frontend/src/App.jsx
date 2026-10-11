@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 import AIInsights from "./components/AIInsights.jsx";
 import AuthForm from "./components/AuthForm.jsx";
@@ -42,6 +42,14 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [incidentDetailLoading, setIncidentDetailLoading] = useState(false);
   const [incidentDetailError, setIncidentDetailError] = useState("");
+  const [theme, setTheme] = useState(() =>
+    window.localStorage.getItem("crowdsense_theme") === "light" ? "light" : "dark"
+  );
+  const [userLocation, setUserLocation] = useState(null);
+  const [hoveredIncidentId, setHoveredIncidentId] = useState(null);
+  const [focusedIncident, setFocusedIncident] = useState(null);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const sheetDragStart = useRef(null);
   const [currentView, setCurrentView] = useState(() =>
     window.localStorage.getItem("crowdsense_token")
       ? viewFromHash(window.location.hash)
@@ -92,6 +100,16 @@ export default function App() {
     const hash = view === "dashboard" ? "#/" : `#/${view}`;
     if (window.location.hash !== hash) window.location.hash = hash;
   }, [user]);
+
+  const handleThemeToggle = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    window.localStorage.setItem("crowdsense_theme", nextTheme);
+    setTheme(nextTheme);
+  };
+
+  const handleHoverIncident = useCallback((incidentId) => {
+    setHoveredIncidentId(incidentId);
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -211,12 +229,12 @@ export default function App() {
   };
 
   if (authLoading) {
-    return <div className="auth-loading">Restoring your CrowdSense session...</div>;
+    return <div className="auth-loading" data-theme={theme}>Restoring your CrowdSense session...</div>;
   }
 
   if (!user) {
     return (
-      <div className="login-shell">
+      <div className="login-shell" data-theme={theme}>
         <div className="login-brand">
           <span className="brand-mark">C</span>
           <div>
@@ -233,13 +251,24 @@ export default function App() {
 
   const canVerify = roleCanVerify(user.role);
   const isAdmin = user.role === "admin";
+  const verifiedCount = incidents.filter((incident) =>
+    incident.status?.toLowerCase().includes("verified")
+  ).length;
+  const averageConfidence = incidents.length
+    ? incidents.reduce((sum, incident) => sum + (Number(incident.confidence) || 0), 0) / incidents.length
+    : 0;
+  const conflictCount = incidents.filter((incident) => incident.has_contradiction).length;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={theme}>
       <header className="app-header">
         <div className="brand-header">
-          <h1>CrowdSense</h1>
+          <span className="brand-mark" aria-hidden="true">C</span>
+          <div className="brand-copy">
+            <h1>CrowdSense</h1>
           <span className="subtitle">Real-Time Geospatial Incident Intelligence</span>
+          </div>
+          <span className="live-indicator"><i /> Live</span>
         </div>
         <nav className="header-nav" aria-label="Main navigation">
           <button className={`nav-btn ${currentView === "dashboard" ? "active" : ""}`} onClick={() => navigateTo("dashboard")}>
@@ -258,6 +287,15 @@ export default function App() {
           )}
           <div className="account-controls">
             <span className="account-label">{user.email} · {user.role}</span>
+            <button
+              className="theme-toggle"
+              type="button"
+              onClick={handleThemeToggle}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            >
+              <span aria-hidden="true">{theme === "dark" ? "☼" : "☾"}</span>
+            </button>
             <button className="nav-btn" onClick={handleSignOut}>Sign out</button>
           </div>
         </nav>
@@ -266,23 +304,71 @@ export default function App() {
       {error && <div className="error-banner" role="alert">{error}</div>}
 
       {currentView === "dashboard" && (
-        <div className="app-body dashboard-layout">
-          <div className="map-pane"><MapView incidents={incidents} /></div>
-          <aside className="sidebar-pane">
-            <div className="sidebar-toolbar">
-              <span className="refresh-note">Auto-refreshes every 10 seconds</span>
-              <button className="icon-button" onClick={reloadData} disabled={dataLoading} aria-label="Refresh incidents and reports">
-                {dataLoading ? "…" : "↻"}
-              </button>
+        <div className="dashboard-body">
+          <section className="stats-row" aria-label="Incident overview">
+            <div className="stat-card">
+              <span>Total incidents</span><strong>{incidents.length}</strong><i aria-hidden="true">◉</i>
             </div>
-            <IncidentList
-              incidents={incidents}
-              canVerify={canVerify}
-              verifyingIncidentId={verifyingIncidentId}
-              onVerify={handleVerify}
-              onViewDetails={handleViewIncident}
-            />
-          </aside>
+            <div className="stat-card">
+              <span>Verified</span><strong>{verifiedCount}</strong><i className="stat-icon-green" aria-hidden="true">✓</i>
+            </div>
+            <div className="stat-card">
+              <span>Avg. confidence</span><strong>{Math.round(averageConfidence * 100)}<small>%</small></strong><i className="stat-icon-blue" aria-hidden="true">↗</i>
+            </div>
+            <div className="stat-card">
+              <span>Conflicts</span><strong>{conflictCount}</strong><i className="stat-icon-amber" aria-hidden="true">⚠</i>
+            </div>
+          </section>
+          <div className="app-body dashboard-layout">
+            <div className="map-pane">
+              <MapView
+                incidents={incidents}
+                theme={theme}
+                onUserLocation={setUserLocation}
+                onHighlightIncident={handleHoverIncident}
+                highlightedIncidentId={hoveredIncidentId}
+                focusIncident={focusedIncident}
+              />
+            </div>
+            <aside className={`sidebar-pane${sheetExpanded ? " sheet-expanded" : ""}`}>
+              <button
+                className="sheet-handle"
+                type="button"
+                aria-label={sheetExpanded ? "Collapse incident panel" : "Expand incident panel"}
+                onPointerDown={(event) => {
+                  sheetDragStart.current = event.clientY;
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerUp={(event) => {
+                  if (sheetDragStart.current == null) return;
+                  const movement = event.clientY - sheetDragStart.current;
+                  if (movement < -24) setSheetExpanded(true);
+                  else if (movement > 24) setSheetExpanded(false);
+                  else setSheetExpanded((expanded) => !expanded);
+                  sheetDragStart.current = null;
+                }}
+              >
+                <span />
+              </button>
+              <div className="sidebar-toolbar">
+                <span className="refresh-note"><i /> Live updates · 10 sec</span>
+                <button className="icon-button" onClick={reloadData} disabled={dataLoading} aria-label="Refresh incidents and reports">
+                  {dataLoading ? "…" : "↻"}
+                </button>
+              </div>
+              <IncidentList
+                incidents={incidents}
+                loading={dataLoading}
+                canVerify={canVerify}
+                verifyingIncidentId={verifyingIncidentId}
+                onVerify={handleVerify}
+                onViewDetails={handleViewIncident}
+                onSelectIncident={setFocusedIncident}
+                onHoverIncident={handleHoverIncident}
+                userLocation={userLocation}
+              />
+            </aside>
+          </div>
         </div>
       )}
 
