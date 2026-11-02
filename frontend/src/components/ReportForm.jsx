@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { submitReport } from "../api.js";
 
+// Must match the backend (MEDIA_MAX_BYTES, app/media.py ALLOWED_MIME_TYPES).
+const MAX_PHOTO_BYTES = 5_000_000;
+const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 export default function ReportForm({ token, onReportSubmitted, onViewDashboard }) {
   const [text, setText] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
@@ -37,6 +41,17 @@ export default function ReportForm({ token, onReportSubmitted, onViewDashboard }
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      if (!PHOTO_TYPES.includes(file.type)) {
+        setSubmitError("Only JPEG, PNG or WebP photos are accepted.");
+        e.target.value = "";
+        return;
+      }
+      if (file.size > MAX_PHOTO_BYTES) {
+        setSubmitError(`Photo is too large (max ${MAX_PHOTO_BYTES / 1_000_000} MB).`);
+        e.target.value = "";
+        return;
+      }
+      setSubmitError("");
       setMediaFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -205,15 +220,15 @@ export default function ReportForm({ token, onReportSubmitted, onViewDashboard }
           </div>
 
           <div className="form-group">
-            <label htmlFor="media">Photo / Video Evidence</label>
+            <label htmlFor="media">Photo Evidence</label>
             <input
               id="media"
               type="file"
-              accept="image/*,video/*"
+              accept={PHOTO_TYPES.join(",")}
               onChange={handleFileChange}
               className="file-input"
             />
-            <div className="or-divider">or enter image/video URL:</div>
+            <div className="or-divider">or enter an image URL (stored as a link, not analysed):</div>
             <input
               type="url"
               placeholder="https://example.com/photo.jpg"
@@ -222,11 +237,7 @@ export default function ReportForm({ token, onReportSubmitted, onViewDashboard }
             />
             {mediaUrl && (
               <div className="media-preview">
-                {mediaUrl.startsWith("data:video") ? (
-                  <video src={mediaUrl} controls className="preview-thumb" />
-                ) : (
-                  <img src={mediaUrl} alt="Upload preview" className="preview-thumb" />
-                )}
+                <img src={mediaUrl} alt="Upload preview" className="preview-thumb" />
               </div>
             )}
           </div>

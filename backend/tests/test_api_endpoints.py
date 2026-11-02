@@ -4,8 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.database import Base, engine
+from app.migrations import run_migrations
 
 Base.metadata.create_all(bind=engine)
+run_migrations(engine)
 client = TestClient(app)
 
 def test_health_endpoint():

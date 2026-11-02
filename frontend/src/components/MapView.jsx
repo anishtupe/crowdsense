@@ -166,7 +166,10 @@ function addIncidentLayers(map, incidents) {
       context.strokeStyle = "#f5b84b";
       context.arc(32, 32, 24, 0, Math.PI * 2);
       context.stroke();
-      map.addImage(CONFLICT_IMAGE, canvas, { pixelRatio: 2 });
+      // addImage does not accept a <canvas> element (it throws "mismatched
+      // image size", which stopped the incident layers being added); pass
+      // its pixels as ImageData instead.
+      map.addImage(CONFLICT_IMAGE, context.getImageData(0, 0, canvas.width, canvas.height), { pixelRatio: 2 });
     }
   }
   map.addSource(INCIDENT_SOURCE, {
@@ -253,6 +256,9 @@ export default function MapView({
   const toastTimerRef = useRef(null);
   const sourceSignatureRef = useRef("");
   const lastFittedSignature = useRef("");
+  const mapLoadedRef = useRef(false);
+  const pendingFocusRef = useRef(null);
+  const focusedRef = useRef(false);
   const [toast, setToast] = useState("");
   const [locating, setLocating] = useState(false);
   const locationRequestRef = useRef(false);
@@ -418,7 +424,11 @@ export default function MapView({
       addIncidentLayers(map, incidentsRef.current);
       sourceSignatureRef.current = incidentDataSignature(incidentsRef.current);
       const signature = incidentsRef.current.map((item) => item.id).sort().join("|");
-      if (signature && signature !== lastFittedSignature.current) {
+      mapLoadedRef.current = true;
+      if (pendingFocusRef.current) {
+        showIncident(pendingFocusRef.current);
+        pendingFocusRef.current = null;
+      } else if (signature && signature !== lastFittedSignature.current) {
         fitIncidents(map, incidentsRef.current);
         lastFittedSignature.current = signature;
       } else {
@@ -474,7 +484,11 @@ export default function MapView({
   }, [theme]);
 
   useEffect(() => {
-    if (focusIncident) showIncident(focusIncident);
+    if (!focusIncident) return;
+    // Stop the automatic "fit all incidents" from undoing this focus.
+    focusedRef.current = true;
+    if (mapLoadedRef.current) showIncident(focusIncident);
+    else pendingFocusRef.current = focusIncident;
   }, [focusIncident]);
 
   useEffect(() => {
@@ -496,7 +510,7 @@ export default function MapView({
 
     const signature = incidents.map((item) => `${item.id}:${item.longitude}:${item.latitude}`).sort().join("|");
     if (map.loaded() && signature && signature !== lastFittedSignature.current) {
-      fitIncidents(map, incidents);
+      if (!focusedRef.current) fitIncidents(map, incidents);
       lastFittedSignature.current = signature;
     }
   }, [incidents, onHighlightIncident]);

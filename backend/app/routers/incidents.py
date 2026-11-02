@@ -32,6 +32,7 @@ def _incident_to_out(incident: Incident, db: Session) -> IncidentOut:
         latitude=lat,
         longitude=lon,
         report_count=report_count,
+        fusion_explanation=incident.fusion_explanation,
     )
 
 

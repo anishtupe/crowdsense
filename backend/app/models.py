@@ -68,6 +68,19 @@ class Report(Base):
 
     source_reliability = Column(Float, default=0.5)  # 0-1, tune per source
 
+    # Image evidence (app/services/vision_service.py). All NULL when the
+    # report has no uploaded photo. image_model = "fallback" means no model
+    # was available: no vision evidence, not negative evidence.
+    # Added after the first schema; see app/migrations.py.
+    image_model = Column(String, nullable=True)
+    image_label = Column(String, nullable=True)
+    image_scores = Column(Text, nullable=True)            # JSON {label: probability}
+    image_embedding = Column(Text, nullable=True)         # comma-separated, 512-dim
+    image_text_consistency = Column(Float, nullable=True)  # P(image = text's label)
+    image_conflict = Column(Boolean, nullable=True)       # photo contradicts the text
+    image_phash = Column(String, nullable=True)           # 16 hex chars
+    image_duplicate_of = Column(String, nullable=True)    # earlier report with the same photo
+
     incident_id = Column(UUID(as_uuid=False), ForeignKey("incidents.id"), nullable=True)
 
     reporter = relationship("User", back_populates="reports")
@@ -87,6 +100,7 @@ class Incident(Base):
     confidence = Column(Float, default=0.0)       # calibrated, 0-1
     severity = Column(Float, default=0.0)          # 0-1 (or bucket downstream)
     has_contradiction = Column(Boolean, default=False)
+    fusion_explanation = Column(Text, nullable=True)  # JSON FusionResult.explanation
 
     status = Column(Enum(VerificationStatus), default=VerificationStatus.ai_detected)
     verified_by_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)

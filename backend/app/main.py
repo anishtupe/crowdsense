@@ -1,9 +1,17 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine
+from app.migrations import run_migrations
 from app.routers import auth, reports, incidents, verification, ws
+
+# Show the app's own INFO logs (pipeline steps, vision, migrations) next to
+# uvicorn's. Uvicorn's loggers don't propagate to root, so no duplicates.
+logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
+logging.getLogger("crowdsense").setLevel(logging.INFO)
 
 app = FastAPI(
     title="CrowdSense API",
@@ -35,6 +43,8 @@ def on_startup():
     # models. Swap this for Alembic migrations once the schema
     # stabilizes (`alembic init` / `alembic revision --autogenerate`).
     Base.metadata.create_all(bind=engine)
+    # create_all never alters existing tables; add newer columns here.
+    run_migrations(engine)
 
 
 @app.get("/health")

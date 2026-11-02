@@ -17,6 +17,22 @@ class Settings(BaseSettings):
     CLUSTER_EPS_MINUTES: float = 180.0
     CLUSTER_MIN_SAMPLES: int = 2
 
+    # Vision (image evidence). Off by default: tests and the slim deploy use
+    # the fallback, which contributes no vision evidence. Thresholds are
+    # hand-set and untuned.
+    VISION_ENABLED: bool = False
+    VISION_MODEL: str = "clip-vit-b32-int8"            # id recorded with each result
+    VISION_MODEL_DIR: str = "models/clip-vit-b32"      # relative to backend/
+    VISION_MIN_LABEL_CONFIDENCE: float = 0.5
+    VISION_CONFLICT_LOW: float = 0.15
+    VISION_CONFLICT_HIGH: float = 0.5
+    VISION_PHASH_MAX_DISTANCE: int = 8   # of 64 bits
+    VISION_IN_FUSION: bool = True        # false = "remove vision" ablation
+
+    # Uploaded photos (base64 data URIs in POST /reports)
+    MEDIA_MAX_BYTES: int = 5_000_000     # decoded size
+    MEDIA_MAX_SIDE: int = 1600           # px, longest side after re-encoding
+
     CORS_ORIGINS: str = "http://localhost:5173"
 
     class Config:

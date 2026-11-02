@@ -7,3 +7,6 @@ node_modules/
 dist/
 *.egg-info/
 .pytest_cache/
+
+# Downloaded model files (see backend/scripts/fetch_vision_model.py)
+backend/models/

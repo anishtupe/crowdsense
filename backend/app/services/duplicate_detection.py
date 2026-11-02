@@ -113,3 +113,38 @@ def find_duplicates(
         )
 
     return results
+
+
+# ---- Near-duplicate images (same photo reposted) --------------------------
+
+def phash_distance(a: str, b: str) -> int:
+    """Hamming distance (number of differing bits) between two hex-encoded
+    perceptual hashes of the same length."""
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
+@dataclass
+class ImageDuplicateResult:
+    candidate_id: str
+    distance: int
+
+
+def find_image_duplicates(
+    new_hash: Optional[str],
+    candidates: List[tuple[str, Optional[str]]],
+    max_distance: int = 8,
+) -> List[ImageDuplicateResult]:
+    """candidates: list of (report_id, image_hash). Returns the candidates
+    whose hash is within `max_distance` bits of `new_hash`, closest first.
+    A missing hash on either side (no image, or no Pillow) never matches."""
+    if not new_hash:
+        return []
+    matches: List[ImageDuplicateResult] = []
+    for cand_id, cand_hash in candidates:
+        if not cand_hash or len(cand_hash) != len(new_hash):
+            continue
+        dist = phash_distance(new_hash, cand_hash)
+        if dist <= max_distance:
+            matches.append(ImageDuplicateResult(candidate_id=cand_id, distance=dist))
+    matches.sort(key=lambda m: m.distance)
+    return matches

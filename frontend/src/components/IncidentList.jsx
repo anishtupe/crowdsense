@@ -89,7 +89,8 @@ export default function IncidentList({
     return filtered.sort((first, second) => {
       if (sortBy === "severity") return (Number(second.severity) || 0) - (Number(first.severity) || 0);
       if (sortBy === "confidence") return (Number(second.confidence) || 0) - (Number(first.confidence) || 0);
-      return new Date(second.created_at || 0) - new Date(first.created_at || 0);
+      // updated_at, so an incident that just absorbed a new report moves to the top.
+      return new Date(second.updated_at || second.created_at || 0) - new Date(first.updated_at || first.created_at || 0);
     });
   }, [incidents, search, typeFilter, statusFilter, severityFilter, sortBy]);
 

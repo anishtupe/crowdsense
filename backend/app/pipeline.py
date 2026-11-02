@@ -18,6 +18,8 @@ entirely (see the README's "where to take this next" section).
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timedelta
 from typing import List
 
@@ -25,13 +27,18 @@ from geoalchemy2.shape import to_shape
 from app.utils import safe_to_shape
 from sqlalchemy.orm import Session
 
+from app.media import stored_image_bytes
 from app.models import Report, Incident, VerificationStatus
 from app.services import nlp_service, vision_service
-from app.services.duplicate_detection import EvidenceItem, find_duplicates
+from app.services.duplicate_detection import (
+    EvidenceItem, find_duplicates, find_image_duplicates,
+)
 from app.services.clustering import cluster_reports
 from app.services.contradiction_detection import any_contradictions
-from app.services.fusion_engine import fuse_evidence
+from app.services.fusion_engine import ImageEvidence, VisionSignals, fuse_evidence
 from app.config import settings
+
+logger = logging.getLogger("crowdsense.pipeline")
 
 
 def _report_to_evidence_item(report: Report) -> EvidenceItem:
@@ -50,9 +57,43 @@ def _report_to_evidence_item(report: Report) -> EvidenceItem:
     )
 
 
+def _analyze_media(report: Report) -> None:
+    """Fill the report's image_* fields from its uploaded photo. Only photos
+    uploaded with the report (stored data URIs) are analysed; links are
+    never downloaded."""
+    image_bytes = stored_image_bytes(report.media_url)
+    if image_bytes is None:
+        if report.media_url:
+            logger.info("Report %s: media is a link, not analysed", report.id)
+        return
+
+    text_label = report.disaster_type
+    result = vision_service.analyze_image(image_bytes, text_label=text_label)
+    report.image_model = result.model
+    report.image_label = result.label
+    report.image_scores = json.dumps(result.scores) if result.scores else None
+    report.image_embedding = (
+        ",".join(str(x) for x in result.embedding) if result.embedding else None
+    )
+    report.image_text_consistency = result.text_consistency
+    report.image_conflict = result.cross_modal_conflict
+    report.image_phash = vision_service.compute_phash(image_bytes)
+
+    override = vision_service.image_type_override(text_label, result)
+    if override:
+        report.disaster_type = override
+    logger.info(
+        "Report %s vision: model=%s label=%s consistency=%s conflict=%s type %s -> %s%s",
+        report.id, result.model, result.label, result.text_consistency,
+        result.cross_modal_conflict, text_label, report.disaster_type,
+        f" ({result.note})" if result.note else "",
+    )
+
+
 def process_new_report(db: Session, report_id: str) -> None:
     report = db.query(Report).filter(Report.id == report_id).first()
     if report is None:
+        logger.warning("Report %s not found; nothing to process", report_id)
         return
 
     # 1. NLP
@@ -60,12 +101,15 @@ def process_new_report(db: Session, report_id: str) -> None:
     report.sentiment = nlp_service.analyze_sentiment(report.text)
     embedding = nlp_service.embed(report.text or "")
     report.embedding = ",".join(str(x) for x in embedding)
+    logger.info("Report %s NLP: type=%s sentiment=%s embedding_dim=%d",
+                report.id, report.disaster_type, report.sentiment, len(embedding))
 
-    # 2. Vision (if media attached)
-    if report.media_url:
-        vision_label = vision_service.classify_image(report.media_url)
-        if vision_label and report.disaster_type == "unclassified":
-            report.disaster_type = vision_label
+    # 2. Vision (uploaded photo only). A vision failure must not lose the
+    #    report: log it and continue without image evidence.
+    try:
+        _analyze_media(report)
+    except Exception:
+        logger.exception("Report %s: vision analysis failed; continuing without it", report.id)
 
     db.commit()
     db.refresh(report)
@@ -84,6 +128,17 @@ def process_new_report(db: Session, report_id: str) -> None:
     candidates = [_report_to_evidence_item(r) for r in candidates_q if r.location is not None]
     new_item = _report_to_evidence_item(report)
 
+    # Same photo reposted? (perceptual hash, same candidate window)
+    image_dups = find_image_duplicates(
+        report.image_phash,
+        [(r.id, r.image_phash) for r in candidates_q],
+        max_distance=settings.VISION_PHASH_MAX_DISTANCE,
+    )
+    if image_dups:
+        report.image_duplicate_of = image_dups[0].candidate_id
+        logger.info("Report %s: photo near-duplicate of report %s (%d bits apart)",
+                    report.id, image_dups[0].candidate_id, image_dups[0].distance)
+
     dup_results = find_duplicates(
         new_item,
         candidates,
@@ -92,6 +147,8 @@ def process_new_report(db: Session, report_id: str) -> None:
         time_window_minutes=settings.DEDUP_TIME_WINDOW_MINUTES,
     )
     duplicate_ids = {r.candidate_id for r in dup_results if r.is_duplicate}
+    logger.info("Report %s: %d candidates in window, %d text/space/time duplicates",
+                report.id, len(candidates), len(duplicate_ids))
 
     # 4. Cluster this report together with its duplicates/neighbors
     cluster_items = [new_item] + [c for c in candidates if c.id in duplicate_ids]
@@ -113,8 +170,25 @@ def process_new_report(db: Session, report_id: str) -> None:
     # 5. Contradiction check within the fused group
     contradiction = any_contradictions([(i.id, i.text) for i in fused_group])
 
-    # 6. Evidence fusion
-    result = fuse_evidence(fused_group, has_contradiction=contradiction)
+    # 6. Evidence fusion (vision terms only when VISION_IN_FUSION; off =
+    #    exactly the text/space/time fusion, for the "remove vision" ablation)
+    vision = None
+    if settings.VISION_IN_FUSION:
+        rows = {r.id: r for r in candidates_q}
+        rows[report.id] = report
+        vision = VisionSignals(
+            images=[
+                ImageEvidence(
+                    report_id=i.id,
+                    scores=json.loads(rows[i.id].image_scores) if rows[i.id].image_scores else None,
+                    conflict=rows[i.id].image_conflict,
+                    phash=rows[i.id].image_phash,
+                )
+                for i in fused_group
+            ],
+            phash_max_distance=settings.VISION_PHASH_MAX_DISTANCE,
+        )
+    result = fuse_evidence(fused_group, has_contradiction=contradiction, vision=vision)
 
     # 7. Upsert the Incident: reuse an existing incident if any fused
     #    report already belongs to one, otherwise create a new one.
@@ -136,7 +210,10 @@ def process_new_report(db: Session, report_id: str) -> None:
     incident.disaster_type = result.disaster_type
     incident.confidence = result.confidence
     incident.severity = result.severity
-    incident.has_contradiction = result.has_contradiction
+    # Flag for verifiers: text-text OR photo-vs-text contradiction. The
+    # explanation keeps the two apart.
+    incident.has_contradiction = result.has_contradiction or result.cross_modal_conflict
+    incident.fusion_explanation = json.dumps(result.explanation)
     incident.updated_at = datetime.utcnow()
 
     # Point the centroid at the new report's location for simplicity;
@@ -148,6 +225,9 @@ def process_new_report(db: Session, report_id: str) -> None:
     )
 
     db.commit()
+    logger.info("Report %s -> incident %s (%d reports, confidence=%.3f, contradiction=%s)",
+                report.id, incident.id, len(fused_group), result.confidence,
+                incident.has_contradiction)
 
     # 8. Broadcast — call this from the async route/background task that
     #    invokes process_new_report, since this function itself is sync.

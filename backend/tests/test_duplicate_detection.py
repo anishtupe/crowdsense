@@ -5,6 +5,8 @@ from app.services.duplicate_detection import (
     find_duplicates,
     haversine_distance_m,
     cosine_similarity,
+    find_image_duplicates,
+    phash_distance,
 )
 
 
@@ -58,3 +60,24 @@ def test_find_duplicates_respects_time_window():
 
     results = find_duplicates(new_item, [too_late], time_window_minutes=120)
     assert results[0].is_duplicate is False
+
+
+def test_phash_distance_counts_differing_bits():
+    assert phash_distance("0" * 16, "0" * 16) == 0
+    assert phash_distance("0" * 16, "f" * 16) == 64
+    assert phash_distance("0" * 15 + "1", "0" * 16) == 1
+
+
+def test_find_image_duplicates_threshold_order_and_missing_hashes():
+    new = "0" * 16
+    candidates = [
+        ("far", "f" * 16),            # 64 bits apart
+        ("close", "0" * 15 + "3"),    # 2 bits apart
+        ("exact", "0" * 16),          # 0 bits apart
+        ("no_image", None),
+        ("other_size", "0" * 8),
+    ]
+    matches = find_image_duplicates(new, candidates, max_distance=8)
+    assert [m.candidate_id for m in matches] == ["exact", "close"]
+    assert [m.distance for m in matches] == [0, 2]
+    assert find_image_duplicates(None, candidates) == []

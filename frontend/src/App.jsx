@@ -77,6 +77,33 @@ export default function App() {
     setDataLoading(false);
   }, []);
 
+  // POST /reports returns before the AI pipeline (a background task) has
+  // created the incident, so an immediate reload misses it. Poll until the
+  // report is linked to an incident, then reload once more.
+  const handleReportSubmitted = useCallback(async (report) => {
+    // A report near an existing incident is merged into it rather than
+    // creating a new dot, so focus the map on whichever incident it joined.
+    reloadData();
+    let incidentId = null;
+    for (let attempt = 0; attempt < 40 && !incidentId; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      try {
+        const recent = await fetchReports(20);
+        incidentId = recent.find((item) => item.id === report.id)?.incident_id || null;
+      } catch {
+        // keep polling; the 10 s refresh still runs as a fallback
+      }
+    }
+    await reloadData();
+    if (incidentId) {
+      try {
+        setFocusedIncident(await fetchIncident(incidentId));
+      } catch {
+        // the incident is still on the map; just not focused
+      }
+    }
+  }, [reloadData]);
+
   const checkHealth = useCallback(async () => {
     try {
       setHealth(await fetchHealth());
@@ -376,7 +403,7 @@ export default function App() {
         <div className="app-body form-view-body">
           <ReportForm
             token={token}
-            onReportSubmitted={() => reloadData()}
+            onReportSubmitted={handleReportSubmitted}
             onViewDashboard={() => navigateTo("dashboard")}
           />
         </div>

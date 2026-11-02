@@ -1,6 +1,8 @@
+import logging
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import Point
 from sqlalchemy.orm import Session
@@ -9,11 +11,13 @@ from app.database import get_db, engine
 from app.models import Report, User
 from app.schemas import ReportCreate, ReportOut
 from app.auth import get_current_user
+from app.media import MediaError, process_report_media
 from app.pipeline import process_new_report
 from app.ws.manager import manager
 from app.utils import safe_from_shape
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+logger = logging.getLogger("crowdsense.reports")
 
 
 def _report_to_out(report: Report) -> ReportOut:
@@ -29,10 +33,16 @@ async def create_report(
 ):
     point = safe_from_shape(payload.longitude, payload.latitude, engine)
 
+    # Validate, strip EXIF and re-encode photos before anything is stored.
+    try:
+        media_url = await run_in_threadpool(process_report_media, payload.media_url)
+    except MediaError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+
     report = Report(
         reporter_id=current_user.id if current_user else None,
         text=payload.text,
-        media_url=payload.media_url,
+        media_url=media_url,
         source=payload.source,
         location=point,
     )
@@ -48,6 +58,9 @@ async def create_report(
         session = SessionLocal()
         try:
             incident_id = process_new_report(session, report_id)
+        except Exception:
+            # BackgroundTask errors are otherwise easy to miss.
+            logger.exception("Pipeline failed for report %s", report_id)
         finally:
             session.close()
 

@@ -31,6 +31,10 @@ _DISASTER_KEYWORDS = {
     "accident": ["accident", "crash", "collision", "derail"],
 }
 
+# Public label set, shared with vision_service so text and image use the
+# same disaster types.
+DISASTER_LABELS = tuple(_DISASTER_KEYWORDS)
+
 _NEGATIVE_WORDS = ["dead", "died", "collapse", "trapped", "injured", "damage", "destroyed"]
 _POSITIVE_WORDS = ["safe", "rescued", "recovered", "resolved", "clear"]
 

@@ -18,6 +18,9 @@ def _init_engine():
         eng = create_engine(db_url, pool_pre_ping=True)
         with eng.connect() as conn:
             pass
+        # Drop the probe connection: it was opened before the SQLite stub
+        # functions below are registered and would otherwise be reused.
+        eng.dispose()
         logger.info("Connected to primary database (PostgreSQL/PostGIS).")
         return eng
     except Exception as e:
